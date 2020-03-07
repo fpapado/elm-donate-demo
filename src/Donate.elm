@@ -223,8 +223,8 @@ frequencyOptions =
 
 amountOptions : List (RadioOption Amount)
 amountOptions =
-    [ { label = "25", value = Amount.fromInt 25 }
-    , { label = "50", value = Amount.fromInt 50 }
+    [ { label = "$25", value = Amount.fromInt 25 }
+    , { label = "$50", value = Amount.fromInt 50 }
     ]
 
 
@@ -306,7 +306,7 @@ viewErrorBox { id, frequencyInputName, amountInputName } checkoutState =
 
                         FailedToGetId str ->
                             -- TODO: Add a more actionabl error here. Should the user retry?
-                            p [] [ text "We could not get the checkout id." ]
+                            p [] [ text "We could not get the checkout id. This happens because we do not have the API wired up." ]
 
                         FailedToRedirect str ->
                             p [] [ text str ]

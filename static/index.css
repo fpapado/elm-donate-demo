@@ -43,6 +43,10 @@ ul > li + li {
   margin-top: 0.5em;
 }
 
+p {
+  max-width: 55ch;
+}
+
 /* Center main content */
 main {
   max-width: 64rem;
