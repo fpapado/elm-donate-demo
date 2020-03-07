@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "npm run build:static && npm run build:elm",
-    "build:static": "mkdir dist && cp static/* dist/",
+    "build:static": "rm -rf dist/ && mkdir dist && cp static/* dist/",
     "build:elm": "elm make src/Donate.elm --output dist/donate.js --optimize",
     "dev": "concurrently npm:dev:*",
     "dev:serve": "serve --single dist/",
