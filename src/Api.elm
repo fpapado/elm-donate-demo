@@ -18,10 +18,19 @@ baseUrl =
 -}
 donateUrl : Amount -> Frequency -> String
 donateUrl amount frequency =
+    let
+        frequencyParam =
+            case frequency of
+                Frequency.Monthly ->
+                    "monthly"
+
+                Frequency.OneTime ->
+                    "onetime"
+    in
     Url.Builder.crossOrigin baseUrl
         [ "donate" ]
         [ int "amount" (Amount.toInt amount)
-        , string "frequency" (Frequency.toString frequency)
+        , string "frequency" frequencyParam
         ]
 
 

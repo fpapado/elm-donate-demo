@@ -352,7 +352,9 @@ viewValidationErrors { frequencyInputName, amountInputName } errors =
 
 
 type alias RadioOption v =
-    { label : String, value : v }
+    { label : String
+    , value : v
+    }
 
 
 {-| Show a group of radio buttons, with correct ids and labels
