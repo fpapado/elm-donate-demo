@@ -330,10 +330,12 @@ viewValidationErrors { frequencyInputName, amountInputName } errors =
         linkToError error =
             case error of
                 MissingAmount ->
-                    a [ HA.href ("#" ++ getInputId frequencyInputName 0) ] [ text "Please select an amount." ]
+                    a [ HA.href ("#" ++ getInputId amountInputName 0) ]
+                        [ text "Please select an amount." ]
 
                 MissingFrequency ->
-                    a [ HA.href ("#" ++ getInputId amountInputName 0) ] [ text "Please select a frequency." ]
+                    a [ HA.href ("#" ++ getInputId frequencyInputName 0) ]
+                        [ text "Please select a frequency." ]
     in
     ul
         []
