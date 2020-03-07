@@ -62,12 +62,6 @@ type alias Model =
     }
 
 
-type SelectedAmount
-    = None
-    | Prefilled Amount
-    | CustomAmount String
-
-
 type CheckoutState
     = FillingDetails
     | Submitting
@@ -210,10 +204,11 @@ validateOptions rawInput =
 
 
 -- View
--- We need a unique error box id to be able to focus it
--- on errors
 
 
+{-| We need a unique error box id to be able to focus it
+on errors
+-}
 errorBoxId : String
 errorBoxId =
     "checkout-error"
@@ -247,11 +242,23 @@ view model =
 
 viewForm : Model -> Html Msg
 viewForm model =
+    let
+        frequencyInputName =
+            "frequency"
+
+        amountInputName =
+            "amount"
+    in
     form [ HE.onSubmit UserPressedSubmit ]
         -- The error box should always be present (even if empty) in the DOM
         -- so that it is available when we focus it. This also allows Screen Reader
         -- announcements via ARIA Live Regions, though we do not use those at the moment.
-        [ viewErrorBox { id = errorBoxId } model.checkoutState
+        [ viewErrorBox
+            { id = errorBoxId
+            , frequencyInputName = frequencyInputName
+            , amountInputName = amountInputName
+            }
+            model.checkoutState
 
         -- Fieldsets help group radio buttons, and need legend to be exposed
         -- as a region to Assistive Technologies
@@ -281,8 +288,8 @@ viewForm model =
         ]
 
 
-viewErrorBox : { id : String } -> CheckoutState -> Html msg
-viewErrorBox { id } checkoutState =
+viewErrorBox : { id : String, frequencyInputName : String, amountInputName : String } -> CheckoutState -> Html msg
+viewErrorBox { id, frequencyInputName, amountInputName } checkoutState =
     div [ HA.id id, HA.tabindex -1 ]
         (case checkoutState of
             Failed error ->
@@ -291,7 +298,11 @@ viewErrorBox { id } checkoutState =
                         [ text "Error" ]
                     , case error of
                         FailedValidation validationErrors ->
-                            viewValidationErrors validationErrors
+                            viewValidationErrors
+                                { frequencyInputName = frequencyInputName
+                                , amountInputName = amountInputName
+                                }
+                                validationErrors
 
                         FailedToGetId str ->
                             -- TODO: Add a more actionabl error here. Should the user retry?
@@ -307,22 +318,28 @@ viewErrorBox { id } checkoutState =
         )
 
 
-viewValidationErrors : List ValidationError -> Html msg
-viewValidationErrors errors =
+{-| Validation errors are a list of errors, with links to the respective field.
+This allows users to jump to the relevant error, without guessing.
+In the case of radios/checkboxes, we link to the first
+The GDS has guidance on error summaries, such as this one.
+@see <https://design-system.service.gov.uk/components/error-summary/>
+-}
+viewValidationErrors : { frequencyInputName : String, amountInputName : String } -> List ValidationError -> Html msg
+viewValidationErrors { frequencyInputName, amountInputName } errors =
     let
-        humanError error =
+        linkToError error =
             case error of
                 MissingAmount ->
-                    "Please select an amount."
+                    a [ HA.href ("#" ++ getInputId frequencyInputName 0) ] [ text "Please select an amount." ]
 
                 MissingFrequency ->
-                    "Please select a frequency."
+                    a [ HA.href ("#" ++ getInputId amountInputName 0) ] [ text "Please select a frequency." ]
     in
     ul
         []
         (List.map
             (\error ->
-                li [] [ text <| humanError error ]
+                li [] [ linkToError error ]
             )
             errors
         )
@@ -344,7 +361,7 @@ viewRadioGroup { name, onItemSelect } items =
         (\index { label, value } ->
             viewRadioButton
                 { name = name
-                , id = name ++ "_" ++ String.fromInt index
+                , id = getInputId name index
                 , onClick = onItemSelect value
                 }
                 label
@@ -364,3 +381,11 @@ viewRadioButton { name, id, onClick } content =
             []
         , label [ HA.for id ] [ text content ]
         ]
+
+
+{-| Helper to get an input's id.
+We want to standardise this, because we use names for linking to inputs from the error box!
+-}
+getInputId : String -> Int -> String
+getInputId base index =
+    base ++ "_" ++ String.fromInt index

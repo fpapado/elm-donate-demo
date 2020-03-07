@@ -52,11 +52,17 @@ main {
 
 .error-box {
   padding: 1rem;
-  border: 2px solid red;
+  border: 0.12em solid #d52222;
 }
 
 .error-box h2 {
   margin-top: 0;
+}
+
+.error-box a,
+.error-box a:visited {
+  color: #d52222;
+  font-weight: 600;
 }
 
 form button {
