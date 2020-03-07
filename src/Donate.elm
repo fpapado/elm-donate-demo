@@ -258,25 +258,25 @@ viewForm model =
         -- Using a heading (h2) in them is another affordance, if people want
         -- to jump to them
         , fieldset []
-            [ legend []
+            (legend []
                 [ h2 []
                     [ text "Frequency of donation"
                     ]
                 ]
-            , viewRadioGroup
-                { name = "frequency", onItemSelect = ChangedDonationFrequency }
-                frequencyOptions
-            ]
+                :: viewRadioGroup
+                    { name = "frequency", onItemSelect = ChangedDonationFrequency }
+                    frequencyOptions
+            )
         , fieldset []
-            [ legend []
+            (legend []
                 [ h2 []
                     [ text "Amount"
                     ]
                 ]
-            , viewRadioGroup
-                { name = "amount", onItemSelect = ChangedDonationAmount }
-                amountOptions
-            ]
+                :: viewRadioGroup
+                    { name = "amount", onItemSelect = ChangedDonationAmount }
+                    amountOptions
+            )
         , button [] [ text "Go to checkout" ]
         ]
 
@@ -286,18 +286,20 @@ viewErrorBox { id } checkoutState =
     div [ HA.id id, HA.tabindex -1 ]
         (case checkoutState of
             Failed error ->
-                [ h2 []
-                    [ text "Error" ]
-                , case error of
-                    FailedValidation validationErrors ->
-                        viewValidationErrors validationErrors
+                [ div [ HA.class "error-box" ]
+                    [ h2 []
+                        [ text "Error" ]
+                    , case error of
+                        FailedValidation validationErrors ->
+                            viewValidationErrors validationErrors
 
-                    FailedToGetId str ->
-                        -- TODO: Add a more actionabl error here. Should the user retry?
-                        p [] [ text "We could not get the checkout id." ]
+                        FailedToGetId str ->
+                            -- TODO: Add a more actionabl error here. Should the user retry?
+                            p [] [ text "We could not get the checkout id." ]
 
-                    FailedToRedirect str ->
-                        p [] [ text str ]
+                        FailedToRedirect str ->
+                            p [] [ text str ]
+                    ]
                 ]
 
             _ ->
@@ -336,20 +338,18 @@ type alias RadioOption v =
 
 {-| Show a group of radio buttons, with correct ids and labels
 -}
-viewRadioGroup : { name : String, onItemSelect : value -> msg } -> List (RadioOption value) -> Html msg
+viewRadioGroup : { name : String, onItemSelect : value -> msg } -> List (RadioOption value) -> List (Html msg)
 viewRadioGroup { name, onItemSelect } items =
-    div []
-        (List.indexedMap
-            (\index { label, value } ->
-                viewRadioButton
-                    { name = name
-                    , id = name ++ "_" ++ String.fromInt index
-                    , onClick = onItemSelect value
-                    }
-                    label
-            )
-            items
+    List.indexedMap
+        (\index { label, value } ->
+            viewRadioButton
+                { name = name
+                , id = name ++ "_" ++ String.fromInt index
+                , onClick = onItemSelect value
+                }
+                label
         )
+        items
 
 
 viewRadioButton : { name : String, id : String, onClick : msg } -> String -> Html msg
