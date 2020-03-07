@@ -266,8 +266,7 @@ view model =
     { title = "Donate"
     , body =
         [ main_ []
-            [ h1 [] [ text "Donate" ]
-            , viewForm model
+            [ viewForm model
             ]
         ]
     }
@@ -292,10 +291,12 @@ viewForm model =
             "amount-custom"
     in
     form [ HE.onSubmit UserPressedSubmit, HA.autocomplete False ]
+        [ h1 [] [ text "Donate" ]
+
         -- The error box should always be present (even if empty) in the DOM
         -- so that it is available when we focus it. This also allows Screen Reader
         -- announcements via ARIA Live Regions, though we do not use those at the moment.
-        [ viewErrorBox
+        , viewErrorBox
             { id = errorBoxId
             , frequencyId = frequencyFirstId
             , amountId = amountFirstId
@@ -359,11 +360,20 @@ viewForm model =
 
 viewErrorBox : { id : String, frequencyId : String, amountId : String, customAmountId : String } -> CheckoutState -> Html msg
 viewErrorBox { id, frequencyId, amountId, customAmountId } checkoutState =
-    div [ HA.id id, HA.tabindex -1 ]
+    let
+        headingId =
+            id ++ "-title"
+    in
+    div
+        [ HA.id id
+        , HA.tabindex -1
+        , HA.attribute "role" "alert"
+        , HA.attribute "aria-labelledby" headingId
+        ]
         (case checkoutState of
             Failed error ->
                 [ div [ HA.class "error-box" ]
-                    [ h2 []
+                    [ h2 [ HA.id headingId ]
                         [ text "Error" ]
                     , case error of
                         FailedValidation validationErrors ->

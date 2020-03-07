@@ -143,7 +143,6 @@ form div {
   position: relative;
 }
 
-form > div,
 form fieldset > div {
   margin: 1.5em 0;
 }
