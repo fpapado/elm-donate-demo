@@ -10,7 +10,8 @@
     "dev": "concurrently npm:dev:*",
     "dev:serve": "serve --single dist/",
     "dev:static": "cp static/* dist/",
-    "dev:watch": "chokidar '**/*.elm' -c 'elm make src/Donate.elm --output dist/donate.js --debug' --initial",
+    "dev:watch-elm": "chokidar '**/*.elm' -c 'elm make src/Donate.elm --output dist/donate.js --debug' --initial",
+    "dev:watch-static": "chokidar 'static/**/*' -c 'npm run dev:static'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
