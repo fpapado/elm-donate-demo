@@ -401,15 +401,15 @@ viewValidationErrors { frequencyId, amountId, customAmountId } errors =
             case error of
                 MissingFrequency ->
                     a [ HA.href ("#" ++ frequencyId) ]
-                        [ text "Please select a frequency." ]
+                        [ text "Select a donation frequency." ]
 
                 MissingAmount ->
                     a [ HA.href ("#" ++ amountId) ]
-                        [ text "Please select an amount." ]
+                        [ text "Select an amount." ]
 
                 InvalidAmount ->
                     a [ HA.href ("#" ++ customAmountId) ]
-                        [ text "Fill in the custom amount as an integer, such as 5 and 10, but not a fraction, such as 10,5." ]
+                        [ text "The custom amount must be an integer, such as 5 and 10, but not a fraction, such as 10,5." ]
     in
     ul
         []
