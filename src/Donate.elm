@@ -1,11 +1,13 @@
 port module Donate exposing (..)
 
-import Amount
+import Amount exposing (Amount)
 import Api
-import Frequency
+import Browser
+import Frequency exposing (Frequency)
 import Html exposing (..)
 import Html.Attributes as HA
 import Html.Events as HE
+import Http
 
 
 
@@ -28,12 +30,24 @@ main =
         { init = init
         , view = view
         , update = update
-        , subscriptions = failure GotStripeCheckoutFailure
+        , subscriptions = \_ -> failure GotStripeCheckoutFailure
         }
 
 
 
 -- Init
+
+
+init : () -> ( Model, Cmd Msg )
+init () =
+    ( { selectedAmount = None
+      , checkout = FillingDetails
+      }
+    , Cmd.none
+    )
+
+
+
 -- Model
 
 
@@ -44,7 +58,8 @@ type alias Model =
 
 
 type SelectedAmount
-    = Prefilled Amount
+    = None
+    | Prefilled Amount
     | CustomAmount String
 
 
@@ -52,7 +67,9 @@ type CheckoutState
     = FillingDetails
     | FailedValidation String
     | Submitting
-    | Failed String
+    | FailedToGetId Http.Error
+    | FailedToRedirect String
+    | Redirecting
 
 
 
@@ -60,45 +77,87 @@ type CheckoutState
 
 
 type Msg
-    = PressedSubmit
-    | GotCheckoutIdResponse Result
-    | GotStripeCheckoutFailure
+    = UserPressedSubmit
+    | GotCheckoutIdResponse (Result Http.Error String)
+    | GotStripeCheckoutFailure String
 
 
 
 -- Update
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         -- When the user presses sumbit, we validate their input
         -- and either expose an error or send to the API
-        PressedSubmit ->
-            ( model, Cmd.none )
+        UserPressedSubmit ->
+            case model.checkout of
+                -- If the checkout is in process, do not allow the user to submit again
+                -- (we could also do this in the onSubmit handler directly)
+                Submitting ->
+                    ( model, Cmd.none )
+
+                _ ->
+                    case model.selectedAmount of
+                        None ->
+                            ( { model | checkout = FailedValidation "Please select an amount first" }
+                            , Cmd.none
+                            )
+
+                        Prefilled amount ->
+                            ( { model | checkout = Submitting }
+                            , Api.getCheckoutId GotCheckoutIdResponse amount Frequency.OneTime
+                            )
+
+                        CustomAmount int ->
+                            Debug.todo "Handle custom amounts"
 
         GotCheckoutIdResponse res ->
-            ( model, Cmd.none )
+            case res of
+                -- If we got the checkout id, send it through the port
+                Ok checkoutId ->
+                    ( { model
+                        | checkout = Redirecting
+                      }
+                    , checkout checkoutId
+                    )
 
-        GotStripeCheckoutFailure ->
-            ( model, Cmd.none )
+                -- If we failed to get the id, set the state with the error
+                Err err ->
+                    ( { model
+                        | checkout = FailedToGetId err
+                      }
+                    , Cmd.none
+                    )
+
+        GotStripeCheckoutFailure err ->
+            ( { model
+                | checkout = FailedToRedirect err
+              }
+            , Cmd.none
+            )
 
 
 
 -- View
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
-    main []
-        [ h1 [] [ text "Donate" ]
-        , viewForm
+    { title = "Donate"
+    , body =
+        [ main_ []
+            [ h1 [] [ text "Donate" ]
+            , viewForm model
+            ]
         ]
+    }
 
 
 viewForm : Model -> Html Msg
-viewForm =
-    form []
+viewForm model =
+    form [ HE.onSubmit UserPressedSubmit ]
         [ fieldset []
             [ legend []
                 [ h2 []
@@ -108,4 +167,5 @@ viewForm =
             , label [ HA.for "amount-0" ] [ text "25" ]
             , input [ HA.type_ "radio" ] []
             ]
+        , button [] [ text "Go to checkout" ]
         ]

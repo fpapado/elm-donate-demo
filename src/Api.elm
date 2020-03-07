@@ -1,4 +1,4 @@
-module Api exposing (..)
+module Api exposing (getCheckoutId)
 
 import Amount exposing (Amount)
 import Frequency exposing (Frequency)
@@ -17,18 +17,17 @@ baseUrl =
 <https://worker.elm-lang.org/donate?amount=50&frequency=onetime>
 -}
 donateUrl : Amount -> Frequency -> String
-donateUrl =
-    UrlBuilder.crossOrigin baseUrl
+donateUrl amount frequency =
+    Url.Builder.crossOrigin baseUrl
         [ "donate" ]
-        [ int (Amount.toInt amount)
-        , string (Frequency.toString frequency)
+        [ int "amount" (Amount.toInt amount)
+        , string "frequency" (Frequency.toString frequency)
         ]
 
 
-getCheckoutId : msg -> Amount -> Frequency -> Cmd msg
+getCheckoutId : (Result Http.Error String -> msg) -> Amount -> Frequency -> Cmd msg
 getCheckoutId toMsg amount frequency =
-    let
-        url =
-            donateUrl amount frequency
-    in
-    Http.get url
+    Http.get
+        { url = donateUrl amount frequency
+        , expect = Http.expectString toMsg
+        }
