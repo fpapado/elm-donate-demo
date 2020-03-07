@@ -40,7 +40,8 @@ main =
 
 init : () -> ( Model, Cmd Msg )
 init () =
-    ( { selectedAmount = None
+    ( { selectedAmount = Nothing
+      , selectedFrequency = Nothing
       , checkout = FillingDetails
       }
     , Cmd.none
@@ -52,7 +53,8 @@ init () =
 
 
 type alias Model =
-    { selectedAmount : SelectedAmount
+    { selectedFrequency : Maybe Frequency
+    , selectedAmount : Maybe Amount
     , checkout : CheckoutState
     }
 
@@ -65,7 +67,7 @@ type SelectedAmount
 
 type CheckoutState
     = FillingDetails
-    | FailedValidation String
+    | FailedValidation (List ValidationError)
     | Submitting
     | FailedToGetId Http.Error
     | FailedToRedirect String
@@ -77,7 +79,9 @@ type CheckoutState
 
 
 type Msg
-    = UserPressedSubmit
+    = ChangedDonationFrequency Frequency
+    | ChangedDonationAmount Amount
+    | UserPressedSubmit
     | GotCheckoutIdResponse (Result Http.Error String)
     | GotStripeCheckoutFailure String
 
@@ -89,6 +93,12 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        ChangedDonationFrequency frequency ->
+            ( { model | selectedFrequency = Just frequency }, Cmd.none )
+
+        ChangedDonationAmount amount ->
+            ( { model | selectedAmount = Just amount }, Cmd.none )
+
         -- When the user presses sumbit, we validate their input
         -- and either expose an error or send to the API
         UserPressedSubmit ->
@@ -99,19 +109,20 @@ update msg model =
                     ( model, Cmd.none )
 
                 _ ->
-                    case model.selectedAmount of
-                        None ->
-                            ( { model | checkout = FailedValidation "Please select an amount first" }
+                    let
+                        validationResult =
+                            validateOptions { amount = model.selectedAmount, frequency = model.selectedFrequency }
+                    in
+                    case validationResult of
+                        Err errors ->
+                            ( { model | checkout = FailedValidation errors }
                             , Cmd.none
                             )
 
-                        Prefilled amount ->
+                        Ok { amount, frequency } ->
                             ( { model | checkout = Submitting }
-                            , Api.getCheckoutId GotCheckoutIdResponse amount Frequency.OneTime
+                            , Api.getCheckoutId GotCheckoutIdResponse amount frequency
                             )
-
-                        CustomAmount int ->
-                            Debug.todo "Handle custom amounts"
 
         GotCheckoutIdResponse res ->
             case res of
@@ -140,7 +151,64 @@ update msg model =
 
 
 
+-- Form Validation
+
+
+type alias ValidationResult =
+    Result (List ValidationError) { amount : Amount, frequency : Frequency }
+
+
+type ValidationError
+    = MissingAmount
+    | MissingFrequency
+
+
+validateOptions : { amount : Maybe Amount, frequency : Maybe Frequency } -> ValidationResult
+validateOptions rawInput =
+    let
+        parsedFrequency : Result ValidationError Frequency
+        parsedFrequency =
+            rawInput.frequency
+                |> Result.fromMaybe MissingFrequency
+
+        parsedAmount : Result ValidationError Amount
+        parsedAmount =
+            rawInput.amount
+                |> Result.fromMaybe MissingAmount
+    in
+    -- There might be nicer ways to write this, perhaps with extra tagging
+    -- but I'm not sure if that would guarantee both amount and frequency
+    -- being present. A tuple, perhaps? Maybe not critical atm.
+    case ( parsedAmount, parsedFrequency ) of
+        ( Err x, Err y ) ->
+            Err [ x, y ]
+
+        ( Err x, Ok _ ) ->
+            Err [ x ]
+
+        ( Ok _, Err y ) ->
+            Err [ y ]
+
+        ( Ok amount, Ok frequency ) ->
+            Ok { amount = amount, frequency = frequency }
+
+
+
 -- View
+
+
+frequencyOptions : List (RadioOption Frequency)
+frequencyOptions =
+    [ { label = "One time only", value = Frequency.OneTime }
+    , { label = "Monthly", value = Frequency.Monthly }
+    ]
+
+
+amountOptions : List (RadioOption Amount)
+amountOptions =
+    [ { label = "25", value = Amount.fromInt 25 }
+    , { label = "50", value = Amount.fromInt 50 }
+    ]
 
 
 view : Model -> Browser.Document Msg
@@ -158,14 +226,88 @@ view model =
 viewForm : Model -> Html Msg
 viewForm model =
     form [ HE.onSubmit UserPressedSubmit ]
-        [ fieldset []
+        -- Fieldsets help group radio buttons, and need legend to be exposed
+        -- as a region to Assistive Technologies
+        -- Using a heading (h2) in them is another affordance, if people want
+        -- to jump to them
+        [ case model.checkout of
+            FailedValidation errors ->
+                div []
+                    [ h2 []
+                        [ text "Error" ]
+                    , ul
+                        []
+                        (List.map
+                            (\error ->
+                                li []
+                                    [ text <|
+                                        case error of
+                                            MissingAmount ->
+                                                "Please select an amount."
+
+                                            MissingFrequency ->
+                                                "Please select a frequency."
+                                    ]
+                            )
+                            errors
+                        )
+                    ]
+            _ -> text ""
+        , fieldset []
+            [ legend []
+                [ h2 []
+                    [ text "Frequency of donation"
+                    ]
+                ]
+            , viewRadioGroup
+                { name = "frequency", onItemSelect = ChangedDonationFrequency }
+                frequencyOptions
+            ]
+        , fieldset []
             [ legend []
                 [ h2 []
                     [ text "Amount"
                     ]
                 ]
-            , label [ HA.for "amount-0" ] [ text "25" ]
-            , input [ HA.type_ "radio" ] []
+            , viewRadioGroup
+                { name = "amount", onItemSelect = ChangedDonationAmount }
+                amountOptions
             ]
         , button [] [ text "Go to checkout" ]
+        ]
+
+
+type alias RadioOption v =
+    { label : String, value : v }
+
+
+{-| Show a group of radio buttons, with correct ids and labels
+-}
+viewRadioGroup : { name : String, onItemSelect : value -> msg } -> List (RadioOption value) -> Html msg
+viewRadioGroup { name, onItemSelect } items =
+    div []
+        (List.indexedMap
+            (\index { label, value } ->
+                viewRadioButton
+                    { name = name
+                    , id = name ++ "_" ++ String.fromInt index
+                    , onClick = onItemSelect value
+                    }
+                    label
+            )
+            items
+        )
+
+
+viewRadioButton : { name : String, id : String, onClick : msg } -> String -> Html msg
+viewRadioButton { name, id, onClick } content =
+    div []
+        [ input
+            [ HA.type_ "radio"
+            , HE.onClick onClick
+            , HA.name name
+            , HA.id id
+            ]
+            []
+        , label [ HA.for id ] [ text content ]
         ]

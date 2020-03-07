@@ -1,4 +1,4 @@
-module Frequency exposing (Frequency(..), toString)
+module Frequency exposing (Frequency(..), fromString, toString)
 
 
 type Frequency
@@ -14,3 +14,16 @@ toString frequency =
 
         OneTime ->
             "onetime"
+
+
+fromString : String -> Maybe Frequency
+fromString str =
+    case str of
+        "monthly" ->
+            Just Monthly
+
+        "onetime" ->
+            Just OneTime
+
+        _ ->
+            Nothing
