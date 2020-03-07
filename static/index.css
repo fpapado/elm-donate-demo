@@ -94,6 +94,29 @@ form button:active {
   background-color: #184d6f;
 }
 
+/* Text input styles */
+input[type="text"] {
+  display: block;
+  padding: 0.5em;
+  width: 100%;
+  max-width: calc(100% - 2em);
+  border: 0.1em solid rgba(0, 0, 0, 0.75);
+}
+
+input[type="text"]:focus {
+  outline: 2px solid #277cb2;
+}
+
+.custom-amount-input label {
+  font-weight: 600;
+}
+
+.custom-amount-input input {
+  margin-top: 0.5em;
+  /* Give a max-width of a few thousand digits, to avoid this looking off the charts */
+  max-width: 12ch;
+}
+
 /* Custom Radio button Styling from Adrian Roselli
   @see http://adrianroselli.com/2017/05/under-engineered-custom-radio-buttons-and-checkboxen.html 
   The gist of this techinque is:

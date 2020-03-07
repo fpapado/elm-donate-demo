@@ -57,9 +57,17 @@ init () =
 
 type alias Model =
     { selectedFrequency : Maybe Frequency
-    , selectedAmount : Maybe Amount
+    , selectedAmount : Maybe SelectedAmount
     , checkoutState : CheckoutState
     }
+
+
+{-| A selected amount can be either a known valid value,
+or a String that we must validate on submit.
+-}
+type SelectedAmount
+    = FixedAmount Amount
+    | CustomAmount String
 
 
 type CheckoutState
@@ -81,7 +89,7 @@ type CheckoutError
 
 type Msg
     = ChangedDonationFrequency Frequency
-    | ChangedDonationAmount Amount
+    | ChangedDonationAmount SelectedAmount
     | UserPressedSubmit
     | GotCheckoutIdResponse (Result Http.Error String)
     | GotStripeCheckoutFailure String
@@ -113,7 +121,10 @@ update msg model =
                 _ ->
                     let
                         validationResult =
-                            validateOptions { amount = model.selectedAmount, frequency = model.selectedFrequency }
+                            validateOptions
+                                { amount = model.selectedAmount
+                                , frequency = model.selectedFrequency
+                                }
                     in
                     case validationResult of
                         Err errors ->
@@ -169,10 +180,11 @@ type alias ValidationResult =
 
 type ValidationError
     = MissingAmount
+    | InvalidAmount
     | MissingFrequency
 
 
-validateOptions : { amount : Maybe Amount, frequency : Maybe Frequency } -> ValidationResult
+validateOptions : { amount : Maybe SelectedAmount, frequency : Maybe Frequency } -> ValidationResult
 validateOptions rawInput =
     let
         parsedFrequency : Result ValidationError Frequency
@@ -184,6 +196,18 @@ validateOptions rawInput =
         parsedAmount =
             rawInput.amount
                 |> Result.fromMaybe MissingAmount
+                |> Result.andThen
+                    (\existingAmount ->
+                        case existingAmount of
+                            FixedAmount amount ->
+                                Ok amount
+
+                            CustomAmount rawAmount ->
+                                rawAmount
+                                    |> String.toInt
+                                    |> Maybe.map Amount.fromInt
+                                    |> Result.fromMaybe InvalidAmount
+                    )
     in
     -- There might be nicer ways to write this, perhaps with extra tagging
     -- but I'm not sure if that would guarantee both amount and frequency
@@ -221,10 +245,19 @@ frequencyOptions =
     ]
 
 
-amountOptions : List (RadioOption Amount)
+amountOptions : List (RadioOption SelectedAmount)
 amountOptions =
-    [ { label = "$25", value = Amount.fromInt 25 }
-    , { label = "$50", value = Amount.fromInt 50 }
+    [ { label = "$10", value = FixedAmount (Amount.fromInt 25) }
+    , { label = "$25", value = FixedAmount (Amount.fromInt 25) }
+    , { label = "$50", value = FixedAmount (Amount.fromInt 50) }
+
+    -- The "selecting will reval input box" is one way to deal with
+    -- WCAG SC 3.2.2 (On Input), which deals with predictable behaviour
+    -- when the user interacts with an input. Conditionally showing/hiding
+    -- a text box might be unexpected, so we provide instructions to mitigate that.
+    -- Alternatively, we could opt to always make the custom input box visible;
+    -- maybe that's ok as well!
+    , { label = "Custom (selecting will reveal input box)", value = CustomAmount "" }
     ]
 
 
@@ -243,20 +276,30 @@ view model =
 viewForm : Model -> Html Msg
 viewForm model =
     let
-        frequencyInputName =
+        frequencyName =
             "frequency"
 
-        amountInputName =
+        amountName =
             "amount"
+
+        frequencyFirstId =
+            getInputId frequencyName 0
+
+        amountFirstId =
+            getInputId amountName 0
+
+        customAmountId =
+            "amount-custom"
     in
-    form [ HE.onSubmit UserPressedSubmit ]
+    form [ HE.onSubmit UserPressedSubmit, HA.autocomplete False ]
         -- The error box should always be present (even if empty) in the DOM
         -- so that it is available when we focus it. This also allows Screen Reader
         -- announcements via ARIA Live Regions, though we do not use those at the moment.
         [ viewErrorBox
             { id = errorBoxId
-            , frequencyInputName = frequencyInputName
-            , amountInputName = amountInputName
+            , frequencyId = frequencyFirstId
+            , amountId = amountFirstId
+            , customAmountId = customAmountId
             }
             model.checkoutState
 
@@ -271,25 +314,51 @@ viewForm model =
                     ]
                 ]
                 :: viewRadioGroup
-                    { name = "frequency", onItemSelect = ChangedDonationFrequency }
+                    { name = frequencyName, onItemSelect = ChangedDonationFrequency }
                     frequencyOptions
             )
         , fieldset []
-            (legend []
+            ((legend []
                 [ h2 []
                     [ text "Amount"
                     ]
                 ]
                 :: viewRadioGroup
-                    { name = "amount", onItemSelect = ChangedDonationAmount }
+                    { name = amountName, onItemSelect = ChangedDonationAmount }
                     amountOptions
+             )
+                -- If the user has opted for a custom amount, show an input box
+                -- right after it
+                ++ [ case model.selectedAmount of
+                        Just (CustomAmount amount) ->
+                            div [ HA.class "custom-amount-input" ]
+                                [ label [ HA.for customAmountId ]
+                                    [ text "Custom amount (dollars)" ]
+                                , input
+                                    [ -- We avoid type number, because we validate ourselves
+                                      -- @see also https://technology.blog.gov.uk/2020/02/24/why-the-gov-uk-design-system-team-changed-the-input-type-for-numbers/
+                                      HA.type_ "text"
+                                    , HA.id customAmountId
+                                    , HA.placeholder "10"
+                                    , HA.value amount
+
+                                    -- Bring up a number keyboard on mobile
+                                    , HA.attribute "inputmode" "numeric"
+                                    , HE.onInput (ChangedDonationAmount << CustomAmount)
+                                    ]
+                                    []
+                                ]
+
+                        _ ->
+                            text ""
+                   ]
             )
         , button [] [ text "Go to checkout" ]
         ]
 
 
-viewErrorBox : { id : String, frequencyInputName : String, amountInputName : String } -> CheckoutState -> Html msg
-viewErrorBox { id, frequencyInputName, amountInputName } checkoutState =
+viewErrorBox : { id : String, frequencyId : String, amountId : String, customAmountId : String } -> CheckoutState -> Html msg
+viewErrorBox { id, frequencyId, amountId, customAmountId } checkoutState =
     div [ HA.id id, HA.tabindex -1 ]
         (case checkoutState of
             Failed error ->
@@ -299,8 +368,9 @@ viewErrorBox { id, frequencyInputName, amountInputName } checkoutState =
                     , case error of
                         FailedValidation validationErrors ->
                             viewValidationErrors
-                                { frequencyInputName = frequencyInputName
-                                , amountInputName = amountInputName
+                                { frequencyId = frequencyId
+                                , amountId = amountId
+                                , customAmountId = customAmountId
                                 }
                                 validationErrors
 
@@ -324,18 +394,22 @@ In the case of radios/checkboxes, we link to the first
 The GDS has guidance on error summaries, such as this one.
 @see <https://design-system.service.gov.uk/components/error-summary/>
 -}
-viewValidationErrors : { frequencyInputName : String, amountInputName : String } -> List ValidationError -> Html msg
-viewValidationErrors { frequencyInputName, amountInputName } errors =
+viewValidationErrors : { frequencyId : String, amountId : String, customAmountId : String } -> List ValidationError -> Html msg
+viewValidationErrors { frequencyId, amountId, customAmountId } errors =
     let
         linkToError error =
             case error of
+                MissingFrequency ->
+                    a [ HA.href ("#" ++ frequencyId) ]
+                        [ text "Please select a frequency." ]
+
                 MissingAmount ->
-                    a [ HA.href ("#" ++ getInputId amountInputName 0) ]
+                    a [ HA.href ("#" ++ amountId) ]
                         [ text "Please select an amount." ]
 
-                MissingFrequency ->
-                    a [ HA.href ("#" ++ getInputId frequencyInputName 0) ]
-                        [ text "Please select a frequency." ]
+                InvalidAmount ->
+                    a [ HA.href ("#" ++ customAmountId) ]
+                        [ text "Fill in the custom amount as an integer, such as 5 and 10, but not a fraction, such as 10,5." ]
     in
     ul
         []

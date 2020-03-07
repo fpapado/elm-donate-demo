@@ -3,7 +3,6 @@
 An Elm application to set up donations, as outlined in https://discourse.elm-lang.org/t/help-with-foundation-elm-lang-org/5276.
 
 NOTE: Currently there is no real wiring to get the checkout ID.
-Also, the "custom amount" is not implemented yet. Need to think how to best expose it in an accessible way. It would probably be a radio button such as "Custom amount (select to show input)" or something along those lines.
 
 ## Prerequisites
 
