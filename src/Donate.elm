@@ -3,11 +3,14 @@ port module Donate exposing (..)
 import Amount exposing (Amount)
 import Api
 import Browser
+import Browser.Dom as Dom
 import Frequency exposing (Frequency)
 import Html exposing (..)
 import Html.Attributes as HA
 import Html.Events as HE
 import Http
+import Process
+import Task
 
 
 
@@ -42,7 +45,7 @@ init : () -> ( Model, Cmd Msg )
 init () =
     ( { selectedAmount = Nothing
       , selectedFrequency = Nothing
-      , checkout = FillingDetails
+      , checkoutState = FillingDetails
       }
     , Cmd.none
     )
@@ -55,7 +58,7 @@ init () =
 type alias Model =
     { selectedFrequency : Maybe Frequency
     , selectedAmount : Maybe Amount
-    , checkout : CheckoutState
+    , checkoutState : CheckoutState
     }
 
 
@@ -67,11 +70,15 @@ type SelectedAmount
 
 type CheckoutState
     = FillingDetails
-    | FailedValidation (List ValidationError)
     | Submitting
+    | Failed CheckoutError
+    | Redirecting
+
+
+type CheckoutError
+    = FailedValidation (List ValidationError)
     | FailedToGetId Http.Error
     | FailedToRedirect String
-    | Redirecting
 
 
 
@@ -84,6 +91,7 @@ type Msg
     | UserPressedSubmit
     | GotCheckoutIdResponse (Result Http.Error String)
     | GotStripeCheckoutFailure String
+    | NoOp
 
 
 
@@ -102,7 +110,7 @@ update msg model =
         -- When the user presses sumbit, we validate their input
         -- and either expose an error or send to the API
         UserPressedSubmit ->
-            case model.checkout of
+            case model.checkoutState of
                 -- If the checkout is in process, do not allow the user to submit again
                 -- (we could also do this in the onSubmit handler directly)
                 Submitting ->
@@ -115,12 +123,12 @@ update msg model =
                     in
                     case validationResult of
                         Err errors ->
-                            ( { model | checkout = FailedValidation errors }
-                            , Cmd.none
+                            ( { model | checkoutState = Failed (FailedValidation errors) }
+                            , focusErrorBox
                             )
 
                         Ok { amount, frequency } ->
-                            ( { model | checkout = Submitting }
+                            ( { model | checkoutState = Submitting }
                             , Api.getCheckoutId GotCheckoutIdResponse amount frequency
                             )
 
@@ -128,26 +136,33 @@ update msg model =
             case res of
                 -- If we got the checkout id, send it through the port
                 Ok checkoutId ->
-                    ( { model
-                        | checkout = Redirecting
-                      }
+                    ( { model | checkoutState = Redirecting }
                     , checkout checkoutId
                     )
 
                 -- If we failed to get the id, set the state with the error
                 Err err ->
-                    ( { model
-                        | checkout = FailedToGetId err
-                      }
-                    , Cmd.none
+                    ( { model | checkoutState = Failed (FailedToGetId err) }
+                    , focusErrorBox
                     )
 
         GotStripeCheckoutFailure err ->
-            ( { model
-                | checkout = FailedToRedirect err
-              }
-            , Cmd.none
+            ( { model | checkoutState = Failed (FailedToRedirect err) }
+            , focusErrorBox
             )
+
+        NoOp ->
+            ( model, Cmd.none )
+
+
+{-| Focus the form's error box, after a timeout.
+The timeout is important to let a Screen Reader's virtual buffer catch up.
+-}
+focusErrorBox : Cmd Msg
+focusErrorBox =
+    Process.sleep 500
+        |> Task.andThen (\_ -> Dom.focus errorBoxId)
+        |> Task.attempt (\_ -> NoOp)
 
 
 
@@ -195,6 +210,13 @@ validateOptions rawInput =
 
 
 -- View
+-- We need a unique error box id to be able to focus it
+-- on errors
+
+
+errorBoxId : String
+errorBoxId =
+    "checkout-error"
 
 
 frequencyOptions : List (RadioOption Frequency)
@@ -226,33 +248,15 @@ view model =
 viewForm : Model -> Html Msg
 viewForm model =
     form [ HE.onSubmit UserPressedSubmit ]
+        -- The error box should always be present (even if empty) in the DOM
+        -- so that it is available when we focus it. This also allows Screen Reader
+        -- announcements via ARIA Live Regions, though we do not use those at the moment.
+        [ viewErrorBox { id = errorBoxId } model.checkoutState
+
         -- Fieldsets help group radio buttons, and need legend to be exposed
         -- as a region to Assistive Technologies
         -- Using a heading (h2) in them is another affordance, if people want
         -- to jump to them
-        [ case model.checkout of
-            FailedValidation errors ->
-                div []
-                    [ h2 []
-                        [ text "Error" ]
-                    , ul
-                        []
-                        (List.map
-                            (\error ->
-                                li []
-                                    [ text <|
-                                        case error of
-                                            MissingAmount ->
-                                                "Please select an amount."
-
-                                            MissingFrequency ->
-                                                "Please select a frequency."
-                                    ]
-                            )
-                            errors
-                        )
-                    ]
-            _ -> text ""
         , fieldset []
             [ legend []
                 [ h2 []
@@ -275,6 +279,55 @@ viewForm model =
             ]
         , button [] [ text "Go to checkout" ]
         ]
+
+
+viewErrorBox : { id : String } -> CheckoutState -> Html msg
+viewErrorBox { id } checkoutState =
+    div [ HA.id id, HA.tabindex -1 ]
+        (case checkoutState of
+            Failed error ->
+                [ h2 []
+                    [ text "Error" ]
+                , case error of
+                    FailedValidation validationErrors ->
+                        viewValidationErrors validationErrors
+
+                    FailedToGetId str ->
+                        -- TODO: Add a more actionabl error here. Should the user retry?
+                        p [] [ text "We could not get the checkout id." ]
+
+                    FailedToRedirect str ->
+                        p [] [ text str ]
+                ]
+
+            _ ->
+                []
+        )
+
+
+viewValidationErrors : List ValidationError -> Html msg
+viewValidationErrors errors =
+    let
+        humanError error =
+            case error of
+                MissingAmount ->
+                    "Please select an amount."
+
+                MissingFrequency ->
+                    "Please select a frequency."
+    in
+    ul
+        []
+        (List.map
+            (\error ->
+                li [] [ text <| humanError error ]
+            )
+            errors
+        )
+
+
+
+-- Radio Groups
 
 
 type alias RadioOption v =
